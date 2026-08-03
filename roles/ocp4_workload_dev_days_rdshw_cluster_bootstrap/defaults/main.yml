@@ -10,12 +10,6 @@ ocp4_workload_dev_days_rdshw_gitops_repo: https://github.com/rhpds/ocp-dev-days-
 ocp4_workload_dev_days_rdshw_gitops_repo_tag: main
 
 # ------------------------------------------------
-# OpenShift Pipelines
-# ------------------------------------------------
-
-ocp4_workload_dev_days_rdshw_openshift_pipelines_namespace: openshift-operators
-
-# ------------------------------------------------
 # GitLab
 # ------------------------------------------------
 
