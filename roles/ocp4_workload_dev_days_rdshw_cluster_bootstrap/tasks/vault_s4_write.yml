@@ -14,7 +14,6 @@
     namespace: "{{ ocp4_workload_dev_days_rdshw_vault_namespace }}"
     label_selectors:
       - app.kubernetes.io/name=vault
-      - vault-initialized=true
   register: r_vault_pod
   retries: 30
   delay: 10
