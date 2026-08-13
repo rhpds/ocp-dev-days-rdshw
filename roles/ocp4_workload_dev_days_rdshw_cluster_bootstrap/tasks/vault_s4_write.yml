@@ -1,18 +1,20 @@
 ---
-# Write S4 (in-cluster S3) credentials to Vault before ArgoCD bootstrap.
-# The ExternalSecret in ocp-dev-days-rdshw-gitops (aws branch) reads
-# kv/secrets/s4 at sync-wave -1 to build the quay-config-bundle Secret.
+# Write S4 (in-cluster S3) credentials to Vault after ArgoCD bootstrap.
+# The ExternalSecret in cluster/quay-secret/externalsecret.yaml reads
+# secrets/s4 (ESO adds kv/data/ prefix for KV v2) to build quay-config-bundle.
 #
-# This task runs ONLY when ocp4_workload_dev_days_rdshw_vault_s4_enabled: true
-# (set in agnosticv AWS CI only — not in the default CNV CI).
+# ORDERING: This runs AFTER wait_for_apps.yml so Vault is already deployed.
+# VAULT PATH CONTRACT: secrets/s4 -> {access_key, secret_key}
+# ESO refreshInterval is 30s — Quay picks up creds within 30s of this write.
 
-- name: Wait for Vault to be ready
+- name: Wait for Vault pod to be ready
   kubernetes.core.k8s_info:
     api_version: v1
     kind: Pod
     namespace: "{{ ocp4_workload_dev_days_rdshw_vault_namespace }}"
     label_selectors:
       - app.kubernetes.io/name=vault
+      - vault-initialized=true
   register: r_vault_pod
   retries: 30
   delay: 10
@@ -39,22 +41,15 @@
   kubernetes.core.k8s_exec:
     namespace: "{{ ocp4_workload_dev_days_rdshw_vault_namespace }}"
     pod: "{{ ocp4_workload_dev_days_rdshw_vault_name }}-0"
-    command: "vault kv put kv/secrets/s4 access_key={{ ocp4_workload_dev_days_rdshw_vault_s4_access_key }} secret_key={{ ocp4_workload_dev_days_rdshw_vault_s4_secret_key }}"
+    command: >-
+      vault kv put kv/secrets/s4
+      access_key={{ ocp4_workload_dev_days_rdshw_vault_s4_access_key }}
+      secret_key={{ ocp4_workload_dev_days_rdshw_vault_s4_secret_key }}
   register: r_vault_s4_write
   retries: 5
   delay: 10
   until: r_vault_s4_write.rc == 0
 
-- name: Write Quay hostname to Vault (kv/secrets/common)
-  kubernetes.core.k8s_exec:
-    namespace: "{{ ocp4_workload_dev_days_rdshw_vault_namespace }}"
-    pod: "{{ ocp4_workload_dev_days_rdshw_vault_name }}-0"
-    command: "vault kv patch kv/secrets/common quay_hostname=quay.{{ r_openshift_subdomain }}"
-  register: r_vault_common_write
-  retries: 5
-  delay: 10
-  until: r_vault_common_write.rc == 0
-
-- name: Confirm S4 Vault secrets written
+- name: Confirm S4 credentials written to Vault
   ansible.builtin.debug:
-    msg: "S4 credentials written to Vault. ExternalSecret will sync quay-config-bundle within 30s."
+    msg: "S4 creds written to kv/secrets/s4. ESO will sync quay-config-bundle within 30s."
