@@ -1,0 +1,60 @@
+---
+# Write S4 (in-cluster S3) credentials to Vault before ArgoCD bootstrap.
+# The ExternalSecret in ocp-dev-days-rdshw-gitops (aws branch) reads
+# kv/secrets/s4 at sync-wave -1 to build the quay-config-bundle Secret.
+#
+# This task runs ONLY when ocp4_workload_dev_days_rdshw_vault_s4_enabled: true
+# (set in agnosticv AWS CI only — not in the default CNV CI).
+
+- name: Wait for Vault to be ready
+  kubernetes.core.k8s_info:
+    api_version: v1
+    kind: Pod
+    namespace: "{{ ocp4_workload_dev_days_rdshw_vault_namespace }}"
+    label_selectors:
+      - app.kubernetes.io/name=vault
+  register: r_vault_pod
+  retries: 30
+  delay: 10
+  until:
+    - r_vault_pod.resources | length > 0
+    - r_vault_pod.resources[0].status.phase == 'Running'
+    - r_vault_pod.resources[0].status.containerStatuses[0].ready
+
+- name: Assert S4 is healthy before writing credentials to Vault
+  kubernetes.core.k8s_info:
+    api_version: apps/v1
+    kind: Deployment
+    namespace: "{{ ocp4_workload_s4_namespace | default('s4') }}"
+    name: s4
+  register: r_s4_deployment
+  retries: 30
+  delay: 10
+  until:
+    - r_s4_deployment.resources | length > 0
+    - r_s4_deployment.resources[0].status.readyReplicas is defined
+    - r_s4_deployment.resources[0].status.readyReplicas | int >= 1
+
+- name: Write S4 credentials to Vault (kv/secrets/s4)
+  kubernetes.core.k8s_exec:
+    namespace: "{{ ocp4_workload_dev_days_rdshw_vault_namespace }}"
+    pod: "{{ ocp4_workload_dev_days_rdshw_vault_name }}-0"
+    command: "vault kv put kv/secrets/s4 access_key={{ ocp4_workload_dev_days_rdshw_vault_s4_access_key }} secret_key={{ ocp4_workload_dev_days_rdshw_vault_s4_secret_key }}"
+  register: r_vault_s4_write
+  retries: 5
+  delay: 10
+  until: r_vault_s4_write.rc == 0
+
+- name: Write Quay hostname to Vault (kv/secrets/common)
+  kubernetes.core.k8s_exec:
+    namespace: "{{ ocp4_workload_dev_days_rdshw_vault_namespace }}"
+    pod: "{{ ocp4_workload_dev_days_rdshw_vault_name }}-0"
+    command: "vault kv patch kv/secrets/common quay_hostname=quay.{{ r_openshift_subdomain }}"
+  register: r_vault_common_write
+  retries: 5
+  delay: 10
+  until: r_vault_common_write.rc == 0
+
+- name: Confirm S4 Vault secrets written
+  ansible.builtin.debug:
+    msg: "S4 credentials written to Vault. ExternalSecret will sync quay-config-bundle within 30s."

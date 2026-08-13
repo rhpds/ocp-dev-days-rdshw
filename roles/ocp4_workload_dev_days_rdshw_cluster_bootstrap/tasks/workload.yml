@@ -90,6 +90,13 @@
         name: self-provisioner
       subjects: []
 
+# Write S4 credentials to Vault BEFORE ArgoCD bootstrap (AWS only)
+# ExternalSecret in gitops aws branch reads kv/secrets/s4 at wave -1
+# to build quay-config-bundle with real S3 creds before Quay deploys.
+- name: Write S4 credentials to Vault for Quay objectstorage
+  when: ocp4_workload_dev_days_rdshw_vault_s4_enabled | default(false) | bool
+  ansible.builtin.include_tasks: vault_s4_write.yml
+
 - name: Deploy app-of-apps
   ansible.builtin.include_tasks: app_of_apps.yml
 
