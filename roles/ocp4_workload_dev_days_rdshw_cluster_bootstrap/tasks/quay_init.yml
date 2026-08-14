@@ -1,0 +1,80 @@
+---
+# Wait for Quay API to be ready then initialize orgs and users.
+# Runs after vault_s4_write.yml on AWS clusters.
+# Ensures tenant setup jobs always find a ready Quay with parasol org.
+
+- name: Get Quay admin token
+  kubernetes.core.k8s_info:
+    api_version: v1
+    kind: Secret
+    name: quay-admin-token
+    namespace: "{{ ocp4_workload_dev_days_rdshw_quay_namespace }}"
+  register: r_quay_token
+  retries: 30
+  delay: 10
+  until:
+    - r_quay_token.resources | length > 0
+    - r_quay_token.resources[0].data.token is defined
+
+- name: Set Quay admin token
+  ansible.builtin.set_fact:
+    _quay_admin_token: "{{ r_quay_token.resources[0].data.token | b64decode }}"
+
+- name: Wait for Quay API to be ready
+  ansible.builtin.uri:
+    url: "https://{{ ocp4_workload_dev_days_rdshw_quay_registry_host }}/api/v1/discovery"
+    method: GET
+    validate_certs: false
+    status_code: 200
+  register: r_quay_api
+  retries: 120
+  delay: 10
+  until: r_quay_api.status == 200
+
+- name: Create parasol organization in Quay
+  ansible.builtin.uri:
+    url: "https://{{ ocp4_workload_dev_days_rdshw_quay_registry_host }}/api/v1/organization/"
+    method: POST
+    headers:
+      Authorization: "Bearer {{ _quay_admin_token }}"
+      Content-Type: application/json
+    body_format: json
+    body:
+      name: parasol
+      email: parasol@demo.redhat.com
+    validate_certs: false
+    status_code: [201, 400]  # 400 = already exists, both OK
+  register: r_org_create
+  ignore_errors: true
+
+- name: Create Quay user accounts for each dev days user
+  ansible.builtin.uri:
+    url: "https://{{ ocp4_workload_dev_days_rdshw_quay_registry_host }}/api/v1/superuser/users/"
+    method: POST
+    headers:
+      Authorization: "Bearer {{ _quay_admin_token }}"
+      Content-Type: application/json
+    body_format: json
+    body:
+      username: "user{{ item }}"
+      email: "user{{ item }}@demo.redhat.com"
+      password: "{{ common_password }}"
+    validate_certs: false
+    status_code: [200, 201, 400]  # 400 = already exists, OK
+  loop: "{{ range(1, ocp4_workload_dev_days_rdshw_quay_num_users + 1) | list }}"
+  ignore_errors: true
+
+- name: Add users to parasol organization
+  ansible.builtin.uri:
+    url: "https://{{ ocp4_workload_dev_days_rdshw_quay_registry_host }}/api/v1/organization/parasol/members/user{{ item }}"
+    method: PUT
+    headers:
+      Authorization: "Bearer {{ _quay_admin_token }}"
+    validate_certs: false
+    status_code: [200, 201, 400]
+  loop: "{{ range(1, ocp4_workload_dev_days_rdshw_quay_num_users + 1) | list }}"
+  ignore_errors: true
+
+- name: Confirm Quay initialization complete
+  ansible.builtin.debug:
+    msg: "Quay initialized: parasol org created, {{ ocp4_workload_dev_days_rdshw_quay_num_users }} users added."

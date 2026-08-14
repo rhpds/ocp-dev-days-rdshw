@@ -96,11 +96,16 @@
 - name: Wait for all ArgoCD Applications to sync
   ansible.builtin.include_tasks: wait_for_apps.yml
 
-# Write S4 credentials to Vault AFTER ArgoCD has deployed Vault (AWS only).
-# Vault is deployed by ArgoCD via app-of-apps — it must exist before we write to it.
-# ExternalSecret in gitops ocp-dev-days-rdshw-aws branch reads kv/secrets/s4
-# at wave -1 to build quay-config-bundle. The quay-config job polls 120 retries
-# (20 min) which covers the ESO 30s refresh lag after this write.
-- name: Write S4 credentials to Vault for Quay objectstorage (AWS only)
+# Write S4 credentials to Vault AFTER ArgoCD bootstrap (AWS only)
+- name: Write S4 credentials to Vault for Quay objectstorage
   when: ocp4_workload_dev_days_rdshw_vault_s4_enabled | default(false) | bool
   ansible.builtin.include_tasks: vault_s4_write.yml
+
+# Initialize Quay after S4 creds are written — wait for API ready,
+# create parasol org and per-user accounts so tenant setup jobs succeed.
+- name: Initialize Quay registry (org + users)
+  when: ocp4_workload_dev_days_rdshw_vault_s4_enabled | default(false) | bool
+  ansible.builtin.include_tasks: quay_init.yml
+
+- name: Wait for all ArgoCD Applications to sync
+  ansible.builtin.include_tasks: wait_for_apps.yml
