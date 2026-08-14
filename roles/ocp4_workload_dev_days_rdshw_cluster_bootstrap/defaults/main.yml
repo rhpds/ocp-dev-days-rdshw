@@ -47,6 +47,9 @@ ocp4_workload_dev_days_rdshw_quay_users:
     email: dev2@rhdh.com
     password: "{{ common_password }}"
 
+# Number of userN accounts to create in Quay (matches num_users in agnosticv)
+ocp4_workload_dev_days_rdshw_quay_num_users: 6
+
 # ------------------------------------------------
 # LLM / LiteLLM
 # ------------------------------------------------
@@ -76,8 +79,6 @@ ocp4_workload_dev_days_rdshw_vault_name: vault
 ocp4_workload_dev_days_rdshw_vault_auth_namespace: default
 
 # S4 Vault write (AWS only) — set to true in agnosticv AWS CI common.yaml
-# Writes S4 credentials to kv/secrets/s4 before ArgoCD bootstrap
-# so ExternalSecret can sync quay-config-bundle at wave -1.
 ocp4_workload_dev_days_rdshw_vault_s4_enabled: false
 ocp4_workload_dev_days_rdshw_vault_s4_access_key: s4admin
 ocp4_workload_dev_days_rdshw_vault_s4_secret_key: "{{ common_password }}"
